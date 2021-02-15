@@ -1,6 +1,6 @@
 --------------------------------------------
 
-   Sound Cartridge RAM Tester v0.5 by GDX
+   Sound Cartridge RAM Tester v0.7 by GDX
 
 --------------------------------------------
 
@@ -20,8 +20,7 @@
  You can add the /Sn or /Sn-n option after the command to select yourself the
  slot to check. The option must be separated by a space.
  First n is the primary slot number and the second n after the hyphen is the
- secondary slot number. Slot number is a value from 0 to 3.
+ secondary slot number. Slot number is a value between 0-3.
 
  
- Thanks to NYYRIKKI for its SCC detection routine.
  Thank you for reading the documentation and your feedbacks.
