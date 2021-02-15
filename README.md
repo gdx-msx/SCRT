@@ -1,6 +1,6 @@
 --------------------------------------------
 
-   Sound Cartridge RAM Tester v0.5 by GDX
+   Sound Cartridge RAM Tester v0.7 by GDX
 
 --------------------------------------------
 
