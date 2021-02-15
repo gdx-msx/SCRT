@@ -1,4 +1,4 @@
-; Sound Cartridge RAM Tester v0.5 by GDX
+; Sound Cartridge RAM Tester by GDX
 
 
 #include "MAIN-ROM.ASM"
@@ -12,7 +12,11 @@ LF	equ	0Ah
 	jp	START
 
 TITLE_TXT:
-	db	"Sound Cartridge RAM Tester v0.5",LF,CR,LF,"$",0
+	db	"Sound Cartridge RAM Tester v0.7",LF,CR,LF,"$",0
+Prim_SLT:
+	db	0	; Current primary slot number
+Sec_SLT:
+	db	1	; Current secondary slot number
 SCC_SLT:
 	db	0	; Slot ID of the SCC
 NUM_OF_SEG:
@@ -64,7 +68,7 @@ NotSec_SLT:
 	jr	Slot_OK
 
 No_ParamS:
-	call	SCCDETECT
+	call	SCCDetect
 	jp	c,NO_SCC
 	ld	(SCC_SLT),a	
 
@@ -81,7 +85,7 @@ Slot_OK:
 
 	ld	a,(SCC_SLT)	
 	and	80h
-	jr	z,Prim_SLT
+	jr	z,PrimSLT
 	
 	ld	e,"-"
 	ld	c,2	; Print a character
@@ -96,7 +100,7 @@ Slot_OK:
 	ld	c,2	; Print a character (secondary slot number)
 	call	BDOS
 
-Prim_SLT:
+PrimSLT:
 	ld	de,CHK_RAM_TXT
 	call	PRINT
 
@@ -246,7 +250,10 @@ LST_Seg_Checked:
 
 	xor	a
 	ld	(0bffeh),a	; SCC mode
-	ld	(04000h),a	; Select the segment 0 at page 4000h-5FFFh
+	ld	(05000h),a	; Select the segment 0 at page 4000h-5FFFh
+
+	ld	a,3
+	ld	(0B000h),a	; Select the segment 0 at page A000h-BFFFh
 
 	ld	a,(RAMAD1)
 	ld	h,040h
@@ -282,97 +289,120 @@ Bad_Param:
 	rst	0	; Back to the DOS
 
 ;------------------------------------------
-; SCC+ detection routine by NYYRIKKI & GDX
+; SCC+ detection routine by gdx
 ; Input: None
-; Output: A = SCC+ Slot ID if found else 0
-;	  C = 0 if SCC+ found else 1
-;	  Page 8000h-BFFFh = SCC+ slot or random slot if SCC not found
+; Output: A = SCC Slot ID if found else 0
+;	  F = Carry is 0 if SCC found else 1
+;	  Page 8000h-BFFFh = First SCC+ found slot or random slot if SCC not found
 ; Changes: All registers
 ;------------------------------------------
 
-SCCDETECT:
-	ld	d,0ffh
-	ld	hl,EXPTBL
-MAIN_LP:
-	inc	d
-	ld	a,4
-	cp	d
-	scf
-	ret	z
-	
-	ld	a,(hl)
-	inc	hl
-	and	080h
-	jr	z,MAIN_TST
-	call	SUBTST
-	jr	c,MAIN_LP
-	ret
-MAIN_TST:
-	ld	a,d
-	call	CHK_SLT
-	jr	c,MAIN_LP
-	ld	a,d
-	ret
-;-----------------------
-SUBTST:
-	ld	e,0fch
-SUBTST_LP:
-	ld	a,4
-	add	a,e
-	cp	16
-	scf
-	ret	z
-	ld	e,a
-	or	d
-	or	080h
-	ld	c,a
-	call	CHK_SLT
-	jr	c,SUBTST_LP
+SCCDetect:
+	call	Slt_Num_conv
+	ld	c,a		; C = Current slot number
+	jr	nz,SltPrim	; Jump if not primary slot
+	ld	a,3
+	ld	(Sec_SLT),a	; Sec_SLT =3 if primary slot to skip secondary slots
+SltPrim:
 	ld	a,c
+	call	CHK_SLT
+	ld	a,c		; A = Current slot number
+	ret	nc		; Back if SCC+ found
+
+	ld	a,(Sec_SLT)
+	inc	a
+	and	3		; Sec_SLT = 0~3 only
+	ld	(Sec_SLT),a
+	jr	nz,SCCDetect	; Jump if Sec_SLT <> 0
+
+	ld	a,(Prim_SLT)
+	inc	a
+	cp	4
+	ld	(Prim_SLT),a
+	jr	nz,SCCDetect	; Jump if all primary slots are not scanned
+
+	xor	a
+	scf
 	ret
+	
 CHK_SLT:
 	push	bc
-	push	de
-	push	hl
 	
 	ld	h,080h
 	call	ENASLT
 
 	ld	a,020h
-	ld	(0bffeh),a	; Set ROM mode for all page & SCC+ mode
+	ld	(0BFFEh),a	; Set ROM mode for all page & SCC+ mode
 	
-	ld	a,(0B000h)
-	ld	d,a
-	ld	a,082h
-	ld	(0B000h),a
+	ld	hl,0AFFFh
+	ld	d,(hl)
+	ld	a,d		; Store the value
+	ld	(hl),a
+	cp	d
+	jr	nz,SCCpNotFnd	; Jump if the read value is not the same
+	cpl
+	ld	(hl),a
+	ld	a,(hl)
+	cp	d
+	jr	nz,SCCpNotFnd	; Jump if the read value remains the same
+
 	ld	hl,0B800h
 	ld	e,(hl)
-	xor	a
+	ld	a,e		; Store the value
+	cpl
 	ld	(hl),a
 	ld	a,(hl)
-	or	a
-	jr	nz,NoSCC
-	dec	a
+	jr	nz,SCCpNotFnd	; Jump if the read value remains the same
+
+	ld	a,080h
+	ld	(0B000h),a	; Enable the SCC+ registers
+
+	ld	a,255
 	ld	(hl),a
 	ld	a,(hl)
+	cp	255
+	jr	nz,SCCpNotFnd	; Jump if the read value is not 255
 	inc	a
-	jr	nz,NoSCC
-	ld	a,(0B000h)
-	cp	082h
-	jr	z,NoSCC
+	ld	(hl),a
+	ld	a,(hl)
+	or	a	
+	jr	nz,SCCpNotFnd	; Jump if the read value is not 0
+
 	xor	a
-	jr	EXIT_TST
-NoSCC:
-	ld	(hl),e
+	jr	SCRCH_End
+
+SCCpNotFnd:
 	ld	a,d
-	ld	(0B000h),a
+	ld	(0AFFFh),a
+	ld	(hl),e
 	scf
-EXIT_TST:
-	pop	hl
-	pop	de
+SCRCH_End:
 	pop	bc
 	ret
+	
+; Convert Prim_SLT and Sec_SLT values to slot number format
+; Entry: Prim_SLT, Sec_SLT
+; Output: A = Slot number (FxxxPPSS)
+; Modify: A, BC, HL
 
+Slt_Num_conv:
+	ld	a,(Prim_SLT)
+	ld	c,a
+	ld	b,0
+	ld	hl,EXPTBL
+	add	hl,bc
+	ld	a,(hl)
+	and	80h
+	ld	a,c
+	ret	z		; Back if primary slot
+
+	ld	a,(Sec_SLT)
+	rlca
+	rlca
+	or	c
+	or	080h
+	ret
+	
 ; Print a character and restore the SCC slot at page 4000h-7FFFh
 ; Input: A = Character code
 
